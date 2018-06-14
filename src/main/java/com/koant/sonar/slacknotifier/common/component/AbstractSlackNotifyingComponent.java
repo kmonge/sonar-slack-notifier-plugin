@@ -1,5 +1,8 @@
 package com.koant.sonar.slacknotifier.common.component;
 
+import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.MESSAGE_TEMPLATE_ENABLED;
+import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.MESSAGE_TEMPLATE_VALUE;
+
 import com.koant.sonar.slacknotifier.common.SlackNotifierProp;
 import org.sonar.api.ce.posttask.QualityGate;
 import org.sonar.api.config.Configuration;
@@ -25,11 +28,14 @@ public abstract class AbstractSlackNotifyingComponent {
     private static final Logger LOG = Loggers.get(AbstractSlackNotifyingComponent.class);
 
     private final Configuration settings;
+
     private Map<String, ProjectConfig> projectConfigMap = Collections.emptyMap();
 
     public AbstractSlackNotifyingComponent(Configuration settings) {
+
         this.settings = settings;
-        LOG.info("Constructor called, project slack channel config map constructed from general settings");
+        LOG.info(
+            "Constructor called, project slack channel config map constructed from general settings");
     }
 
     /**
@@ -43,13 +49,15 @@ public abstract class AbstractSlackNotifyingComponent {
      * </pre>
      */
     protected void refreshSettings() {
+
         LOG.info("Refreshing settings");
         refreshProjectConfigs();
     }
 
     private void refreshProjectConfigs() {
+
         LOG.info("Refreshing project configs");
-        Set<ProjectConfig> oldValues =  this.projectConfigMap.values().stream().
+        Set<ProjectConfig> oldValues = this.projectConfigMap.values().stream().
             map(ProjectConfig::new).collect(Collectors.toSet());
         this.projectConfigMap = buildProjectConfigByProjectKeyMap(this.settings);
         Set<ProjectConfig> newValues = new HashSet<>(this.projectConfigMap.values());
@@ -71,8 +79,9 @@ public abstract class AbstractSlackNotifyingComponent {
     }
 
     protected boolean isPluginEnabled() {
-        return settings.getBoolean(SlackNotifierProp.ENABLED.property()).orElseThrow(()
-            -> new IllegalStateException("Enabled property not found"));
+
+        return settings.getBoolean(SlackNotifierProp.ENABLED.property())
+            .orElseThrow(() -> new IllegalStateException("Enabled property not found"));
     }
 
     /**
@@ -83,12 +92,25 @@ public abstract class AbstractSlackNotifyingComponent {
         return settings.getBoolean(SlackNotifierProp.INCLUDE_BRANCH.property()).orElse(false);
     }
 
+    protected boolean isSlackTemplateEnabled() {
+
+        return settings.getBoolean(MESSAGE_TEMPLATE_ENABLED.property())
+            .orElse(false);
+    }
+
+    /**
+     * @return configured message template. Defaults to empty string if no values found.
+     */
+    protected String getMessageTemplate() {
+        Optional<String> template = settings.get(MESSAGE_TEMPLATE_VALUE.property());
+        return template.orElse("");
+    }
+
     /**
      * Returns the sonar server url, with a trailing /
-     *
-     * @return
      */
     protected String getSonarServerUrl() {
+
         Optional<String> urlOptional = settings.get("sonar.core.serverBaseURL");
         if (!urlOptional.isPresent()) {
             return null;
@@ -101,34 +123,40 @@ public abstract class AbstractSlackNotifyingComponent {
     }
 
     protected Optional<ProjectConfig> getProjectConfig(String projectKey) {
-        List<ProjectConfig> projectConfigs = projectConfigMap.keySet()
-                .stream()
-                .filter(key -> key.endsWith("*") ? projectKey.startsWith(key.substring(0, key.length() - 1))
-                        : key.equals(projectKey))
-                .map(projectConfigMap::get)
-                .collect(Collectors.toList());
+
+        List<ProjectConfig> projectConfigs = projectConfigMap.keySet().stream().filter(
+            key -> key.endsWith("*") ? projectKey.startsWith(key.substring(0, key.length() - 1))
+                : key.equals(projectKey)).map(projectConfigMap::get).collect(Collectors.toList());
         // Not configured at all
         if (projectConfigs.isEmpty()) {
-            LOG.info("Could not find config for project [{}] in [{}]", projectKey, projectConfigMap);
+            LOG.info("Could not find config for project [{}] in [{}]", projectKey,
+                projectConfigMap);
             return Optional.empty();
         }
 
-        if(projectConfigs.size() > 1) {
-            LOG.warn("More than 1 project key was matched. Using first one: {}", projectConfigs.get(0).getProjectKey());
+        if (projectConfigs.size() > 1) {
+            LOG.warn("More than 1 project key was matched. Using first one: {}",
+                projectConfigs.get(0).getProjectKey());
         }
         return Optional.of(projectConfigs.get(0));
     }
 
-    private static Map<String, ProjectConfig> buildProjectConfigByProjectKeyMap(Configuration settings) {
+    private static Map<String, ProjectConfig> buildProjectConfigByProjectKeyMap(
+        Configuration settings) {
+
         Map<String, ProjectConfig> map = new HashMap<>();
-        String[] projectConfigIndexes = settings.getStringArray(SlackNotifierProp.CONFIG.property());
+        String[] projectConfigIndexes =
+            settings.getStringArray(SlackNotifierProp.CONFIG.property());
         LOG.info("SlackNotifierProp.CONFIG=[{}]", projectConfigIndexes);
         for (String projectConfigIndex : projectConfigIndexes) {
-            String projectKeyProperty = SlackNotifierProp.CONFIG.property() + "." + projectConfigIndex + "." + SlackNotifierProp.PROJECT.property();
+            String projectKeyProperty =
+                SlackNotifierProp.CONFIG.property() + "." + projectConfigIndex + "."
+                    + SlackNotifierProp.PROJECT.property();
             Optional<String> projectKey = settings.get(projectKeyProperty);
             if (!projectKey.isPresent()) {
-                throw MessageException.of("Slack notifier configuration is corrupted. At least one project specific parameter has no project key. " +
-                        "Contact your administrator to update this configuration in the global administration section of SonarQube.");
+                throw MessageException
+                    .of("Slack notifier configuration is corrupted. At least one project specific parameter has no project key. "
+                        + "Contact your administrator to update this configuration in the global administration section of SonarQube.");
             }
             ProjectConfig value = ProjectConfig.create(settings, projectConfigIndex);
             LOG.info("Found project configuration [{}]", value);
@@ -138,6 +166,7 @@ public abstract class AbstractSlackNotifyingComponent {
     }
 
     protected String logRelevantSettings() {
+
         Map<String, String> pluginSettings = new HashMap<>();
         mapSetting(pluginSettings, SlackNotifierProp.HOOK);
         mapSetting(pluginSettings, SlackNotifierProp.USER);
@@ -148,18 +177,26 @@ public abstract class AbstractSlackNotifyingComponent {
     }
 
     private void mapSetting(Map<String, String> pluginSettings, SlackNotifierProp key) {
+
         pluginSettings.put(key.name(), settings.get(key.property()).orElse(""));
     }
 
-    protected boolean shouldSkipSendingNotification(ProjectConfig projectConfig, QualityGate qualityGate) {
+    protected boolean shouldSkipSendingNotification(ProjectConfig projectConfig,
+        QualityGate qualityGate) {
         // Disabled due to missing channel value
-        if (projectConfig.getSlackChannel() == null ||
-                "".equals(projectConfig.getSlackChannel().trim())) {
-            LOG.info("Slack channel for project [{}] is blank, notifications disabled", projectConfig.getProjectKey());
+        if (projectConfig.getSlackChannel() == null || ""
+            .equals(projectConfig.getSlackChannel().trim())) {
+            LOG.info("Slack channel for project [{}] is blank, notifications disabled",
+                projectConfig.getProjectKey());
             return true;
         }
-        if (projectConfig.isQgFailOnly() && qualityGate != null && QualityGate.Status.OK.equals(qualityGate.getStatus())) {
-            LOG.info("Project [{}] set up to send notification on failed Quality Gate, but was: {}", projectConfig.getProjectKey(), qualityGate.getStatus().name());
+        if(!projectConfig.getSlackChannel().startsWith("#")){
+            LOG.info("Slack channel for project [{}] does not start with '#', no notification will be sent. ");
+        }
+        if (projectConfig.isQgFailOnly() && qualityGate != null && QualityGate.Status.OK
+            .equals(qualityGate.getStatus())) {
+            LOG.info("Project [{}] set up to send notification on failed Quality Gate, but was: {}",
+                projectConfig.getProjectKey(), qualityGate.getStatus().name());
             return true;
         }
         return false;

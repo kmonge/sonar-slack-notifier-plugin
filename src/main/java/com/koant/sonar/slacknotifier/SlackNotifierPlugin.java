@@ -5,6 +5,8 @@ import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.CONFIG;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.ENABLED;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.HOOK;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.INCLUDE_BRANCH;
+import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.MESSAGE_TEMPLATE_ENABLED;
+import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.MESSAGE_TEMPLATE_VALUE;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.NOTIFY;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.PROJECT;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.QG_FAIL_ONLY;
@@ -73,6 +75,24 @@ public class SlackNotifierPlugin implements Plugin {
             .subCategory(SUBCATEGORY)
             .index(3)
             .build());
+        extensions.add(PropertyDefinition.builder(MESSAGE_TEMPLATE_ENABLED.property())
+            .name("Enable Slack message template. See 'https://api.slack.com/docs/messages' for formatting rules.")
+            .description("If turned off, use default message format")
+            .category(CATEGORY)
+            .subCategory(SUBCATEGORY)
+            .type(PropertyType.BOOLEAN)
+            .index(4)
+            .build());
+        extensions.add(PropertyDefinition.builder(MESSAGE_TEMPLATE_VALUE.property())
+            .name("Message template")
+            .description("Inject values with '${}' syntax. Valid properties are: 'notifyPrefix', 'projectUrl', 'projectName' and 'branchName'.")
+            .category(CATEGORY)
+            .subCategory(SUBCATEGORY)
+            .type(PropertyType.TEXT)
+            .index(5)
+            .build()
+        );
+
 
         extensions.add(
             PropertyDefinition.builder(CONFIG.property())
@@ -81,7 +101,7 @@ public class SlackNotifierPlugin implements Plugin {
                         "If a slack channel is not configured for a project, no slack message will be sent for project.")
                 .category(CATEGORY)
                 .subCategory(SUBCATEGORY)
-                .index(4)
+                .index(6)
                 .fields(
                     PropertyFieldDefinition.build(PROJECT.property())
                         .name("Project Key")

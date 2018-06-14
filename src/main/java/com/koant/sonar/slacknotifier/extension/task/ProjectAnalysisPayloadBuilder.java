@@ -1,12 +1,17 @@
 package com.koant.sonar.slacknotifier.extension.task;
 
 import static java.lang.String.format;
-import static org.apache.commons.lang3.StringUtils.*;
+import static org.apache.commons.lang3.StringUtils.isAnyBlank;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import com.github.seratch.jslack.api.model.Attachment;
 import com.github.seratch.jslack.api.model.Field;
 import com.github.seratch.jslack.api.webhook.Payload;
+import com.google.gson.Gson;
 import com.koant.sonar.slacknotifier.common.component.ProjectConfig;
+import com.koant.sonar.slacknotifier.exception.TemplateCompileException;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.text.StrSubstitutor;
 import org.sonar.api.ce.posttask.Branch;
 import org.sonar.api.ce.posttask.PostProjectAnalysisTask;
 import org.sonar.api.ce.posttask.QualityGate;
@@ -18,6 +23,7 @@ import org.sonar.api.utils.log.Loggers;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -43,12 +49,15 @@ class ProjectAnalysisPayloadBuilder {
         statusToColor.put(QualityGate.Status.ERROR, SLACK_DANGER_COLOUR);
     }
 
+    private final Gson gson = new Gson();
+
     private I18n i18n;
     private PostProjectAnalysisTask.ProjectAnalysis analysis;
     private ProjectConfig projectConfig;
     private String slackUser;
     private String projectUrl;
     private boolean includeBranch;
+    private Optional<String> messageTemplate;
 
     private DecimalFormat percentageFormat;
 
@@ -57,6 +66,7 @@ class ProjectAnalysisPayloadBuilder {
         // Format percentages as 25.01 instead of 25.0066666666666667 etc.
         this.percentageFormat = new DecimalFormat();
         this.percentageFormat.setMaximumFractionDigits(2);
+        this.messageTemplate = Optional.empty();
     }
 
     static ProjectAnalysisPayloadBuilder of(PostProjectAnalysisTask.ProjectAnalysis analysis) {
@@ -88,6 +98,20 @@ class ProjectAnalysisPayloadBuilder {
         return this;
     }
 
+    ProjectAnalysisPayloadBuilder messageTemplate(boolean isEnabled, String template) {
+
+        LOG.info("Setting message template: '{}' to value: '{}'", isEnabled, template);
+        if(isEnabled){
+            this.messageTemplate = Optional.of(template);
+            if(StringUtils.isBlank(template)){
+                LOG.warn("Message template was enabled, but no template set, will continue with default message format");
+            }
+        } else {
+            this.messageTemplate = Optional.empty();
+        }
+        return this;
+    }
+
     Payload build() {
         assertNotNull(projectConfig, "projectConfig");
         assertNotNull(projectUrl, "projectUrl");
@@ -95,7 +119,68 @@ class ProjectAnalysisPayloadBuilder {
         assertNotNull(i18n, "i18n");
         assertNotNull(analysis, "analysis");
 
-        String notifyPrefix = isNotBlank(projectConfig.getNotify()) ? format("<!%s> ", projectConfig.getNotify()) : "";
+        if(messageTemplate.isPresent()){
+            try {
+                return payloadFromTemplate(messageTemplate.get());
+            } catch (Exception e){
+                LOG.warn("Unable to use provided message template. Falling back to default message format", e);
+            }
+        }
+        return  legacySlackPayload();
+    }
+
+    private Payload payloadFromTemplate(String template) {
+        LOG.debug("Generating slack payload from template: '{}'", messageTemplate.orElse(""));
+
+        final List<Attachment> qualityGates = new ArrayList<>();
+        QualityGate qualityGate = analysis.getQualityGate();
+        if(qualityGate != null){
+            boolean qgFailOnly = projectConfig.isQgFailOnly();
+            qualityGates.addAll(buildConditionsAttachment(qualityGate, qgFailOnly));
+        }
+
+        Optional<Branch> branch = analysis.getBranch();
+        String branchName =
+            (branch.isPresent() && this.includeBranch) ? branch.get().getName().orElse("")
+                : "";
+
+        try {
+            Map<String, String> values = new HashMap<>();
+            values.put("notifyPrefix", getNotifyPrefix());
+            values.put("projectUrl", projectUrl);
+            values.put("projectName", getProjectName());
+            values.put("branchName", branchName);
+            values.put("branchUrl", buildBranchUrl(branchName, projectUrl));
+            StrSubstitutor sub = new StrSubstitutor(values);
+            Payload payload = gson.fromJson(sub.replace(template), Payload.class);
+
+            if(payload.getChannel() ==  null){
+                payload.setChannel(projectConfig.getSlackChannel());
+            }
+            if (payload.getAttachments() == null) {
+                payload.setAttachments(new ArrayList<>());
+            }
+            payload.getAttachments().addAll(qualityGates);
+            return payload;
+        } catch (Exception e) {
+            throw new TemplateCompileException(
+                "Failed to compile message from given template, is the template syntax correct?", e);
+        }
+    }
+
+    private String buildBranchUrl(String branchName, String projectUrl) {
+
+        if(isAnyBlank(branchName, projectUrl)){
+
+            return projectUrl; //closest thing we got
+        }
+        return format("%s&branch=%s", projectUrl, branchName);
+    }
+
+    private Payload legacySlackPayload() {
+
+        LOG.debug("Using legacy slack message format");
+        String notifyPrefix = getNotifyPrefix();
 
         QualityGate qualityGate = analysis.getQualityGate();
         StringBuilder shortText = new StringBuilder();
@@ -116,6 +201,17 @@ class ProjectAnalysisPayloadBuilder {
                 .text(shortText.toString())
                 .attachments(qualityGate == null ? null : buildConditionsAttachment(qualityGate, projectConfig.isQgFailOnly()))
                 .build();
+    }
+
+    private String getProjectName() {
+
+        return analysis.getProject().getName();
+    }
+
+    private String getNotifyPrefix() {
+
+        return
+            isNotBlank(projectConfig.getNotify()) ? format("<!%s> ", projectConfig.getNotify()) : "";
     }
 
     private void assertNotNull(Object object, String argumentName) {
