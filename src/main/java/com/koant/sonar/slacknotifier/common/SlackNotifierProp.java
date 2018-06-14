@@ -25,6 +25,11 @@ public enum SlackNotifierProp {
      */
     INCLUDE_BRANCH("ckss.include_branch"),
 
+    MESSAGE_TEMPLATE_ENABLED("ckss.message_format.enabled"),
+
+    MESSAGE_TEMPLATE_VALUE("ckss.message_format.template"),
+
+
     /**
      * <p>
      * The project specific slack channels have to be configured in General, server side settings, instead of per project

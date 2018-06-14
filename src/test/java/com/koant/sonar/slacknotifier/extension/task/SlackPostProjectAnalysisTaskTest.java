@@ -4,15 +4,19 @@ import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.CHANNEL;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.CONFIG;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.ENABLED;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.INCLUDE_BRANCH;
+import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.MESSAGE_TEMPLATE_ENABLED;
+import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.MESSAGE_TEMPLATE_VALUE;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.PROJECT;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.QG_FAIL_ONLY;
 import static com.koant.sonar.slacknotifier.common.SlackNotifierProp.USER;
 import static com.koant.sonar.slacknotifier.extension.task.Analyses.PROJECT_KEY;
 import static java.lang.String.format;
+import static org.junit.Assert.assertEquals;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.github.seratch.jslack.Slack;
@@ -47,15 +51,20 @@ public class SlackPostProjectAnalysisTaskTest {
     private static final String HOOK = "hook";
 
     private CaptorPostProjectAnalysisTask postProjectAnalysisTask;
+
     private SlackPostProjectAnalysisTask task;
+
     private Slack slackClient;
+
     private Settings settings;
+
     private Configuration configuration;
 
     private I18n i18n;
 
     @Before
     public void before() throws IOException {
+
         postProjectAnalysisTask = new CaptorPostProjectAnalysisTask();
         this.settings = new MapSettings();
         settings.setProperty(ENABLED.property(), "true");
@@ -72,20 +81,22 @@ public class SlackPostProjectAnalysisTaskTest {
         WebhookResponse webhookResponse = WebhookResponse.builder().code(200).build();
         when(slackClient.send(anyString(), any(Payload.class))).thenReturn(webhookResponse);
         i18n = Mockito.mock(I18n.class);
-        Mockito.when(i18n.message(Matchers.any(Locale.class), anyString(), anyString())).thenAnswer(
-            (Answer<String>) invocation -> (String) invocation.getArguments()[2]);
+        Mockito.when(i18n.message(Matchers.any(Locale.class), anyString(), anyString()))
+            .thenAnswer((Answer<String>) invocation -> (String) invocation.getArguments()[2]);
         task = new SlackPostProjectAnalysisTask(slackClient, configuration, i18n);
     }
 
     @Test
     public void shouldCall() throws Exception {
+
         Analyses.simple(postProjectAnalysisTask);
         task.finished(postProjectAnalysisTask.getProjectAnalysis());
-        Mockito.verify(slackClient, times(1)).send(eq(HOOK), any(Payload.class));
+        verify(slackClient, times(1)).send(eq(HOOK), any(Payload.class));
     }
 
     @Test
     public void shouldSkipIfPluginDisabled() {
+
         settings.setProperty(ENABLED.property(), "false");
         Analyses.simple(postProjectAnalysisTask);
         task.finished(postProjectAnalysisTask.getProjectAnalysis());
@@ -94,6 +105,7 @@ public class SlackPostProjectAnalysisTaskTest {
 
     @Test
     public void shouldSkipIfNoConfigFound() {
+
         Analyses.simpleDifferentKey(postProjectAnalysisTask);
         task.finished(postProjectAnalysisTask.getProjectAnalysis());
         Mockito.verifyZeroInteractions(slackClient);
@@ -101,6 +113,7 @@ public class SlackPostProjectAnalysisTaskTest {
 
     @Test
     public void shouldSkipIfReportFailedQualityGateButOk() {
+
         settings.setProperty(CONFIG.property() + "." + PROJECT_KEY + "." + QG_FAIL_ONLY.property(), "true");
         Analyses.simple(postProjectAnalysisTask);
         task.finished(postProjectAnalysisTask.getProjectAnalysis());
@@ -109,12 +122,13 @@ public class SlackPostProjectAnalysisTaskTest {
 
     @Test
     public void shouldIncludeBranchWhenEnabledAndPresent() throws IOException {
+
         String branchName = RandomStringUtils.random(13);
         settings.setProperty(INCLUDE_BRANCH.property(), "true");
         Analyses.withBranch(postProjectAnalysisTask, newBranch(false, branchName));
         task.finished(postProjectAnalysisTask.getProjectAnalysis());
         ArgumentCaptor<Payload> arg = ArgumentCaptor.forClass(Payload.class);
-        Mockito.verify(slackClient, times(1)).send(anyString(), arg.capture());
+        verify(slackClient, times(1)).send(anyString(), arg.capture());
         Assert.assertTrue(arg.getValue().getText().contains(format("analyzed for branch [%s]", branchName)));
     }
 
@@ -125,7 +139,7 @@ public class SlackPostProjectAnalysisTaskTest {
         Analyses.withBranch(postProjectAnalysisTask, newBranch(false, "branchName"));
         task.finished(postProjectAnalysisTask.getProjectAnalysis());
         ArgumentCaptor<Payload> arg = ArgumentCaptor.forClass(Payload.class);
-        Mockito.verify(slackClient, times(1)).send(anyString(), arg.capture());
+        verify(slackClient, times(1)).send(anyString(), arg.capture());
         Assert.assertFalse(arg.getValue().getText().contains("branch"));
     }
 
@@ -136,10 +150,59 @@ public class SlackPostProjectAnalysisTaskTest {
         Analyses.withBranch(postProjectAnalysisTask, newBranch(true, "branchName"));
         task.finished(postProjectAnalysisTask.getProjectAnalysis());
         ArgumentCaptor<Payload> arg = ArgumentCaptor.forClass(Payload.class);
-        Mockito.verify(slackClient, times(1)).send(anyString(), arg.capture());
+        verify(slackClient, times(1)).send(anyString(), arg.capture());
         Assert.assertFalse(arg.getValue().getText().contains("branch"));
     }
 
+    @Test
+    public void finished_withMessageTemplateAndBranch_messageIsBasedOnTemplate() throws IOException {
+
+        settings.setProperty(MESSAGE_TEMPLATE_VALUE.property(),
+            "{\"text\": \"Project *<${projectUrl}|${projectName}>* analyzed\"}");
+        settings.setProperty(MESSAGE_TEMPLATE_ENABLED.property(), "true");
+        Analyses.noQualityGate(postProjectAnalysisTask);
+        task.finished(postProjectAnalysisTask.getProjectAnalysis());
+        ArgumentCaptor<Payload> arg = ArgumentCaptor.forClass(Payload.class);
+        verify(slackClient, times(1)).send(anyString(), arg.capture());
+        assertEquals("Project *<http://your.sonar.com/dashboard?id=project:key|Project Name>* analyzed",
+            arg.getValue().getText());
+    }
+
+    @Test
+    public void finished_failsToBuildMessageFromTemplate_useDefaultMessage() throws IOException {
+
+        settings.setProperty(MESSAGE_TEMPLATE_VALUE.property(), "{\"text\": this is an invalid template syntax");
+        settings.setProperty(MESSAGE_TEMPLATE_ENABLED.property(), "true");
+        Analyses.noQualityGate(postProjectAnalysisTask);
+        task.finished(postProjectAnalysisTask.getProjectAnalysis());
+        ArgumentCaptor<Payload> arg = ArgumentCaptor.forClass(Payload.class);
+        verify(slackClient, times(1)).send(anyString(), arg.capture());
+        assertEquals("Project [Project Name] analyzed. See http://your.sonar.com/dashboard?id=project:key.",
+            arg.getValue().getText());
+    }
+
+    @Test
+    public void finished_combineQualityGatesWithTemplateAttachments() throws IOException {
+
+        settings.setProperty(INCLUDE_BRANCH.property(), "true");
+        settings.setProperty(MESSAGE_TEMPLATE_VALUE.property(),
+            "{\"text\": \"Project *<${projectUrl}|${projectName}>* analyzed\",\"attachments\": [{\"text\": \"Branch: <${branchUrl}|${branchName}>\"}]}");
+        settings.setProperty(MESSAGE_TEMPLATE_ENABLED.property(), "true");
+        Analyses.withBranchAndQualityGate(postProjectAnalysisTask, newBranch(false, "branchName"));
+        task.finished(postProjectAnalysisTask.getProjectAnalysis());
+        ArgumentCaptor<Payload> arg = ArgumentCaptor.forClass(Payload.class);
+        verify(slackClient, times(1)).send(anyString(), arg.capture());
+        Payload payload = arg.getValue();
+        assertEquals("Project *<http://your.sonar.com/dashboard?id=project:key|Project Name>* analyzed",
+            payload.getText());
+        assertEquals(2, payload.getAttachments().size());
+        assertEquals("Branch: <http://your.sonar.com/dashboard?id=project:key&branch=branchName|branchName>",
+            payload.getAttachments().get(0).getText());
+        assertEquals(3, payload.getAttachments().get(1).getFields().size());
+        assertEquals("bugs: OK", payload.getAttachments().get(1).getFields().get(0).getTitle());
+        assertEquals("functions: WARN", payload.getAttachments().get(1).getFields().get(1).getTitle());
+        assertEquals("violations: ERROR", payload.getAttachments().get(1).getFields().get(2).getTitle());
+    }
 
     private static Branch newBranch(boolean main, String name) {
 

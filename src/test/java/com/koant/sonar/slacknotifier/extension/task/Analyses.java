@@ -123,36 +123,16 @@ public class Analyses {
                 .withCeTask(CE_TASK)
                 .withProject(PROJECT)
                 .at(new Date())
-                .withQualityGate(
-                        newQualityGateBuilder()
-                                .setId("id")
-                                .setName("name")
-                                .setStatus(QualityGate.Status.ERROR)
-                                .add(newConditionBuilder()
-                                        .setMetricKey(CoreMetrics.BUGS_KEY)
-                                        .setOperator(QualityGate.Operator.GREATER_THAN)
-                                        .setWarningThreshold("2")
-                                        .build(QualityGate.EvaluationStatus.OK, "0"))
-                                .add(newConditionBuilder()
-                                        .setMetricKey(CoreMetrics.FUNCTIONS_KEY)
-                                        .setWarningThreshold("0")
-                                        .setOperator(QualityGate.Operator.GREATER_THAN)
-                                        .build(QualityGate.EvaluationStatus.WARN, "1"))
-                                .add(newConditionBuilder()
-                                        .setMetricKey(CoreMetrics.VIOLATIONS_KEY)
-                                        .setErrorThreshold("5")
-                                        .setOperator(QualityGate.Operator.GREATER_THAN)
-                                        .build(QualityGate.EvaluationStatus.ERROR, "10"))
-                                .build())
+                .withQualityGate(newQualityGate())
                 .execute();
     }
-
 
     public static void noQualityGate(PostProjectAnalysisTask analysisTask) {
         PostProjectAnalysisTaskTester.of(analysisTask)
                 .withCeTask(CE_TASK)
                 .withProject(PROJECT)
                 .at(new Date())
+                .withScannerContext(newScannerContextBuilder().build())
                 .execute();
     }
 
@@ -164,5 +144,40 @@ public class Analyses {
             .at(new Date())
             .withScannerContext(newScannerContextBuilder().build())
             .execute();
+    }
+
+    public static void withBranchAndQualityGate(PostProjectAnalysisTask analysisTask, Branch branch) {
+        PostProjectAnalysisTaskTester.of(analysisTask)
+            .withCeTask(CE_TASK)
+            .withProject(PROJECT)
+            .withBranch(branch)
+            .at(new Date())
+            .withScannerContext(newScannerContextBuilder().build())
+            .withQualityGate(newQualityGate())
+            .execute();
+    }
+
+    private static QualityGate newQualityGate() {
+
+        return newQualityGateBuilder()
+            .setId("id")
+            .setName("name")
+            .setStatus(QualityGate.Status.ERROR)
+            .add(newConditionBuilder()
+                .setMetricKey(CoreMetrics.BUGS_KEY)
+                .setOperator(QualityGate.Operator.GREATER_THAN)
+                .setWarningThreshold("2")
+                .build(QualityGate.EvaluationStatus.OK, "0"))
+            .add(newConditionBuilder()
+                .setMetricKey(CoreMetrics.FUNCTIONS_KEY)
+                .setWarningThreshold("0")
+                .setOperator(QualityGate.Operator.GREATER_THAN)
+                .build(QualityGate.EvaluationStatus.WARN, "1"))
+            .add(newConditionBuilder()
+                .setMetricKey(CoreMetrics.VIOLATIONS_KEY)
+                .setErrorThreshold("5")
+                .setOperator(QualityGate.Operator.GREATER_THAN)
+                .build(QualityGate.EvaluationStatus.ERROR, "10"))
+            .build();
     }
 }

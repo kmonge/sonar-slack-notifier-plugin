@@ -25,12 +25,13 @@ public class SlackPostProjectAnalysisTask extends AbstractSlackNotifyingComponen
     private final I18n i18n;
     private final Slack slackClient;
 
+    @SuppressWarnings("unused")
     public SlackPostProjectAnalysisTask(Configuration settings, I18n i18n) {
-
+        //Required by SonarQube
         this(Slack.getInstance(), settings, i18n);
     }
 
-    public SlackPostProjectAnalysisTask(Slack slackClient, Configuration settings, I18n i18n) {
+    SlackPostProjectAnalysisTask(Slack slackClient, Configuration settings, I18n i18n) {
         super(settings);
         this.slackClient = slackClient;
         this.i18n = i18n;
@@ -56,8 +57,6 @@ public class SlackPostProjectAnalysisTask extends AbstractSlackNotifyingComponen
             return;
         }
 
-
-
         LOG.info("Slack notification will be sent: " + analysis.toString());
 
         Payload payload = ProjectAnalysisPayloadBuilder.of(analysis)
@@ -65,12 +64,14 @@ public class SlackPostProjectAnalysisTask extends AbstractSlackNotifyingComponen
                 .projectConfig(projectConfig)
                 .projectUrl(projectUrl(projectKey))
                 .includeBranch(isBranchEnabled())
+                .messageTemplate(isSlackTemplateEnabled(), getMessageTemplate())
                 .username(getSlackUser())
                 .build();
 
         try {
             // See https://github.com/seratch/jslack
             WebhookResponse response = slackClient.send(getSlackIncomingWebhookUrl(), payload);
+            LOG.debug("Posting payload to slack at: '{}'.\n {}", getSlackIncomingWebhookUrl(), payload);
             if (!Integer.valueOf(200).equals(response.getCode())) {
                 LOG.error("Failed to post to slack, response is [{}]", response);
             }
@@ -82,6 +83,4 @@ public class SlackPostProjectAnalysisTask extends AbstractSlackNotifyingComponen
     private String projectUrl(String projectKey) {
         return getSonarServerUrl() + "dashboard?id=" + projectKey;
     }
-
-
 }
